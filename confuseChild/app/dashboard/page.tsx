@@ -11,6 +11,7 @@ import { useEffect } from "react";
 export default function DashboardPage() {
   const { isSignedIn, user: clerkUser, isLoaded: clerkUserLoaded } = useUser();
   const router = useRouter();
+  const createSession = useMutation(api.sessions.createSession); // This should now work with the proper types
 
   // Ensure user exists in Convex and get their profile
   const ensureConvexUser = useMutation(api.users.ensureUser);
@@ -18,96 +19,64 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (clerkUserLoaded && isSignedIn) {
-      // Once Clerk user is loaded and signed in, ensure they exist in Convex.
-      // This will create the user if they don't exist, with onboardingCompleted: false
-      ensureConvexUser({});
+      ensureConvexUser();
     }
   }, [clerkUserLoaded, isSignedIn, ensureConvexUser]);
+
+  const handleStartSession = async () => {
+    try {
+      const sessionId = await createSession();
+      router.push(`/session/${sessionId}`);
+    } catch (error) {
+      console.error("Failed to create session:", error);
+      alert("Failed to start a new session. Please try again.");
+    }
+  };
 
   useEffect(() => {
     if (clerkUserLoaded) {
       if (!isSignedIn) {
-        router.push("/sign-in"); // Redirect if not signed in
-      } else if (userProfile !== undefined) { // Check if userProfile query has resolved
-        if (userProfile === null) {
-          // This case means ensureUser might not have completed or user somehow not found after ensure.
-          // Could be a transient state or an issue with ensureUser logic.
-          // For now, we can let it be handled by the loading state or ensure ensureUser is robust.
-          // console.log("User profile is null, waiting for ensureUser or refetch");
-        } else if (!userProfile.onboardingCompleted) {
-          router.push("/onboarding/gks-questions"); // Redirect if onboarding is not complete
-        }
+        router.push("/sign-in");
       }
     }
-  }, [clerkUserLoaded, isSignedIn, userProfile, router]);
+  }, [clerkUserLoaded, isSignedIn, router]);
 
-
-  // Loading states:
-  // 1. Clerk user loading
-  // 2. Convex user profile loading (after Clerk user is loaded and ensureUser might have run)
-  // 3. Onboarding not complete (handled by redirect)
-  if (!clerkUserLoaded || userProfile === undefined ) {
-    return <div className="flex justify-center items-center min-h-screen">Loading dashboard...</div>;
+  if (!clerkUserLoaded || !isSignedIn) {
+    return null;
   }
 
-  // If onboarding is not complete, userProfile.onboardingCompleted will be false,
-  // and the useEffect above should have redirected.
-  // If we reach here, and userProfile is available, it means onboarding is complete.
-  if (userProfile && !userProfile.onboardingCompleted) {
-     // This is a fallback, the useEffect should catch this.
-    return <div className="flex justify-center items-center min-h-screen">Redirecting to onboarding...</div>;
-  }
-  
-  if (!isSignedIn || !userProfile) {
-    // This should also be caught by useEffects, but as a safeguard
-    return <div className="flex justify-center items-center min-h-screen">Authorizing...</div>;
-  }
-
-  // --- Dashboard Content ---
   return (
-    <div className="flex flex-col items-center p-4 md:p-8">
-      <header className="w-full flex justify-between items-center mb-10 p-4 bg-gray-100 shadow-md rounded-lg">
-        <h1 className="text-2xl md:text-3xl font-semibold">
-          Welcome, {clerkUser?.firstName || userProfile.email || 'User'}!
-        </h1>
-        <UserButton afterSignOutUrl="/" />
+    <div className="min-h-screen bg-gray-100">
+      {/* Header */}
+      <header className="bg-white shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8 flex justify-between items-center">
+          <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
+          <UserButton afterSignOutUrl="/" />
+        </div>
       </header>
 
-      <div className="w-full max-w-4xl">
-        <section className="mb-8 p-6 bg-white shadow rounded-lg">
-          <h2 className="text-xl font-semibold mb-3">Your Onboarding Insights:</h2>
-          {userProfile.onboardingResponses ? (
-            <ul className="list-disc pl-5 space-y-1">
-              {Object.entries(userProfile.onboardingResponses).map(([key, value]) => (
-                <li key={key}><span className="font-semibold">{key.replace(/_/g, ' ')}:</span> {String(value)}</li>
-              ))}
-            </ul>
-          ) : (
-            <p>No onboarding responses found.</p>
-          )}
-        </section>
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+        {/* Welcome Section */}
+        <div className="bg-white rounded-lg shadow p-6 mb-8">
+          <h2 className="text-xl font-semibold mb-2">Welcome, {clerkUser?.firstName || "User"}!</h2>
+          <p className="text-gray-600">
+            Here you can manage your therapy sessions and track your progress.
+          </p>
+        </div>
 
-        <section className="mb-8 p-6 bg-white shadow rounded-lg">
-          <h2 className="text-xl font-semibold mb-3">Start a Session</h2>
+        {/* Start Session Card */}
+        <div className="bg-white rounded-lg shadow p-6 mb-8">
+          <h3 className="text-lg font-semibold mb-2">Start a New Session</h3>
           <p className="mb-4">Ready to talk? Begin your voice conversation with the AI therapist.</p>
           <button
             className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition duration-150"
-            onClick={() => alert("Start Session functionality to be implemented!")}
+            onClick={handleStartSession}
           >
             Start New Session
           </button>
-        </section>
-
-        <section className="p-6 bg-white shadow rounded-lg">
-            <h2 className="text-xl font-semibold mb-3">My Planner & Exercises</h2>
-            <p>Your personalized tasks and reflections will appear here.</p>
-        </section>
-      </div>
-
-      <footer className="mt-20 text-center text-sm text-gray-500">
-        <p>&copy; {new Date().getFullYear()} AI GKS Therapist. All rights reserved.</p>
-        <Link href="/" className="text-blue-500 hover:underline">Back to Landing Page</Link>
-      </footer>
+        </div>
+      </main>
     </div>
   );
 }
