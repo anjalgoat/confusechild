@@ -13,7 +13,10 @@ import type {
   FilterApi,
   FunctionReference,
 } from "convex/server";
+import type * as chat from "../chat.js";
+import type * as deepgram from "../deepgram.js";
 import type * as myFunctions from "../myFunctions.js";
+import type * as planner from "../planner.js";
 import type * as sessions from "../sessions.js";
 import type * as users from "../users.js";
 
@@ -26,7 +29,10 @@ import type * as users from "../users.js";
  * ```
  */
 declare const fullApi: ApiFromModules<{
+  chat: typeof chat;
+  deepgram: typeof deepgram;
   myFunctions: typeof myFunctions;
+  planner: typeof planner;
   sessions: typeof sessions;
   users: typeof users;
 }>;

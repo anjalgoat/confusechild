@@ -1,97 +1,145 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useState, useEffect } from "react";
-// Import the entire package to use the correct export
-import * as vadPackage from "@ricky0123/vad-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useAction } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { Button } from "@/components/ui/button";
+import {
+  LiveClient,
+  LiveTranscriptionEvents,
+  createClient,
+  LiveConnectionState,
+} from "@deepgram/sdk";
 
-// The console log showed the hook is named `useMicVAD`.
-// We will now use the correct function name.
-const useVAD = vadPackage.useMicVAD;
+// --- Step 1: Bare-minimum options for a transcription-only connection
+const transcriptionOptions = {
+  model: "nova-2-speech",
+  language: "en-US",
+  smart_format: true,
+};
+
+// --- Step 2: Options for a full conversational agent (Aura)
+const conversationalOptions = {
+  model: "aura-asteria-en", // Using a specific conversational agent model
+  smart_format: true,
+};
 
 export default function SessionPage() {
   const { sessionId } = useParams();
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [vadError, setVadError] = useState<string | null>(null);
+  const createDeepgramToken = useAction(api.deepgram.createToken);
 
-  // This check should now pass, as `useVAD` will no longer be undefined.
-  if (!useVAD) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900">
-        <div className="w-full max-w-lg p-6 bg-white dark:bg-gray-800 rounded-2xl shadow-xl text-center">
-          <h2 className="text-2xl font-bold text-red-500 mb-4">Loading Error</h2>
-          <p className="text-red-400">The Voice Activity Detection library could not be loaded correctly.</p>
-        </div>
-      </div>
-    );
-  }
+  const [connection, setConnection] = useState<LiveClient | null>(null);
+  const [connectionState, setConnectionState] = useState<LiveConnectionState>(LiveConnectionState.CLOSED);
+  const [isListening, setIsListening] = useState(false);
+  const [transcript, setTranscript] = useState("");
 
-  // Call the hook with its options
-  const vad = useVAD({
-    onSpeechStart: () => {
-      console.log("Speech started");
-      setIsSpeaking(true);
-    },
-    onSpeechEnd: () => {
-      console.log("Speech ended");
-      setIsSpeaking(false);
-    },
-    onError: (error: Error) => {
-      setVadError(error.message);
+  const microphoneRef = useRef<MediaRecorder | null>(null);
+  const audioQueue = useRef<HTMLAudioElement[]>([]);
+
+  // Function to play audio from the queue
+  const processAudioQueue = useCallback(() => {
+    if (audioQueue.current.length > 0) {
+      const audio = audioQueue.current[0];
+      audio.play().catch(e => console.error("Audio playback error:", e));
+      audio.onended = () => {
+        audioQueue.current.shift();
+        processAudioQueue();
+      };
     }
-  });
+  }, []);
+
+  // Function to stop the conversation and clean up resources
+  const stopConversation = useCallback(() => {
+    if (microphoneRef.current) {
+      microphoneRef.current.stop();
+      microphoneRef.current = null;
+    }
+    if (connection) {
+      connection.finish();
+      setConnection(null);
+    }
+    setIsListening(false);
+    setConnectionState(LiveConnectionState.CLOSED);
+  }, [connection]);
+
+  // Function to start the conversation
+  const startConversation = useCallback(async () => {
+    setIsListening(true);
+    try {
+      const token = await createDeepgramToken();
+      const deepgram = createClient(token);
+      
+      // --- Let's start with the conversational options ---
+      const conn = deepgram.listen.live(conversationalOptions);
+
+      conn.on(LiveTranscriptionEvents.Open, () => {
+        setConnectionState(LiveConnectionState.OPEN);
+      });
+
+      conn.on(LiveTranscriptionEvents.Transcript, (data) => {
+        const text = data.channel.alternatives[0].transcript;
+        if (data.is_final && text) {
+          setTranscript(prev => prev + " " + text);
+        }
+      });
+
+      conn.on(LiveTranscriptionEvents.Message, (message) => {
+        const data = message.data;
+        if (typeof data !== "string") {
+          const audio = new Audio(URL.createObjectURL(new Blob([data])));
+          audioQueue.current.push(audio);
+          if (audioQueue.current.length === 1) {
+            processAudioQueue();
+          }
+        }
+      });
+
+      conn.on(LiveTranscriptionEvents.Error, (e) => console.error("Deepgram Error:", JSON.stringify(e, null, 2)));
+      conn.on(LiveTranscriptionEvents.Close, () => stopConversation());
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mic = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      mic.ondataavailable = (event) => {
+        if (event.data.size > 0 && conn.getReadyState() === 1) {
+          conn.send(event.data);
+        }
+      };
+      
+      microphoneRef.current = mic;
+      mic.start(250);
+      setConnection(conn);
+
+    } catch (e) {
+      console.error("Could not start conversation", e);
+      setIsListening(false);
+    }
+  }, [createDeepgramToken, stopConversation, processAudioQueue]);
+
+  useEffect(() => {
+    return () => stopConversation();
+  }, [stopConversation]);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900">
-      <h1 className="text-4xl font-bold mb-4">Voice Session</h1>
-      <p className="text-sm text-gray-500 mb-8">Session ID: {sessionId}</p>
-
-      <div className="w-full max-w-lg p-6 bg-white dark:bg-gray-800 rounded-2xl shadow-xl">
-        <div className="flex items-center justify-between mb-6">
-          <span className="text-lg font-medium">Mic Status</span>
-          <div className="flex items-center space-x-2">
-            <div className={`w-3 h-3 rounded-full ${isSpeaking ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}></div>
-            <span className={`text-lg font-semibold ${isSpeaking ? 'text-green-500' : 'text-gray-400'}`}>
-              {isSpeaking ? "Speaking" : "Listening..."}
-            </span>
-          </div>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900 p-4">
+      <div className="w-full max-w-2xl p-6 bg-white dark:bg-gray-800 rounded-2xl shadow-xl text-left space-y-4">
+        <h1 className="text-3xl font-bold mb-2 text-center">Therapy Session</h1>
+        <p className="text-center capitalize">Connection: {connectionState}</p>
+        <div>
+          <h2 className="font-bold">Transcript:</h2>
+          <p className="text-gray-700 dark:text-gray-300 h-24 overflow-y-auto">
+            {transcript}
+          </p>
         </div>
-
-        <div className="relative w-full h-24 bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden">
-          {isSpeaking && (
-            <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center">
-              <div className="w-full h-1/2 bg-gradient-to-r from-blue-400 to-purple-500 opacity-75 animate-pulse"></div>
-            </div>
-          )}
-        </div>
-
-        {vadError && (
-          <div className="mt-4 text-center text-red-500">
-            <p>Error: {vadError}</p>
-            <p>Please ensure you have given microphone permissions.</p>
-          </div>
-        )}
       </div>
 
-       <div className="mt-8 space-x-4">
-        <button
-          onClick={vad.start}
-          className="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition duration-150"
+      <div className="mt-8">
+        <Button
+          onClick={isListening ? stopConversation : startConversation}
+          disabled={isListening && connectionState !== "open"}
         >
-          Start Listening
-        </button>
-        <button
-          onClick={vad.pause}
-          className="px-6 py-3 bg-yellow-600 text-white font-semibold rounded-lg hover:bg-yellow-700 transition duration-150"
-        >
-          Pause
-        </button>
-        <button
-          onClick={vad.destroy}
-          className="px-6 py-3 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition duration-150"
-        >
-          Stop
-        </button>
+          {isListening ? "Stop Conversation" : "Start Conversation"}
+        </Button>
       </div>
     </div>
   );

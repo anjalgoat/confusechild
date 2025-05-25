@@ -1,4 +1,5 @@
-import { mutation, query } from "./_generated/server";
+// anjalgoat/confusechild/confusechild-d50e6dfd94d03cf8af81dcc64bdfb6203a08d3de/confuseChild/convex/sessions.ts
+import { mutation, query, internalMutation } from "./_generated/server"; // Added internalMutation
 import { v } from "convex/values";
 
 /**
@@ -38,5 +39,19 @@ export const get = query({
   handler: async (ctx, args) => {
     const session = await ctx.db.get(args.id);
     return session;
+  },
+});
+
+/**
+ * Internal mutation to update a session's summary and mark it as completed.
+ */
+export const updateSessionSummary = internalMutation({
+  args: { sessionId: v.id("sessions"), summary: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.sessionId, {
+      sessionSummary: args.summary,
+      status: "completed",
+      endTime: Date.now(),
+    });
   },
 });

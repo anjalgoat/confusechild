@@ -1,6 +1,6 @@
-// convex/users.ts
+// anjalgoat/confusechild/confusechild-d50e6dfd94d03cf8af81dcc64bdfb6203a08d3de/confuseChild/convex/users.ts
 import { v } from "convex/values";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query, internalQuery } from "./_generated/server"; // Added internalQuery
 import { GenericId } from "convex/values";
 
 // Helper to get user by Clerk ID
@@ -15,6 +15,21 @@ export const getUserByClerkId = query({
   },
 });
 
+/**
+ * Internal helper to get a user's document from a session ID.
+ */
+export const getUserForSession = internalQuery({
+  args: { sessionId: v.id("sessions") },
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) {
+      throw new Error("Session not found");
+    }
+    return await ctx.db.get(session.userId);
+  },
+});
+
+// ... (rest of the file remains the same)
 // Mutation to create a user (called from Clerk webhook or first authenticated action)
 // Ensure onboardingCompleted is false by default
 export const createUser = internalMutation({
