@@ -1,4 +1,3 @@
-// app/dashboard/page.tsx
 "use client";
 
 import { UserButton, useUser } from "@clerk/nextjs";
@@ -9,20 +8,16 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 export default function DashboardPage() {
-  const { isSignedIn, user: clerkUser, isLoaded: clerkUserLoaded } = useUser();
+  const { isSignedIn, user: clerkUser, isLoaded: clerkLoaded } = useUser();
   const router = useRouter();
-  const createSession = useMutation(api.sessions.createSession); // This should now work with the proper types
 
-  // Ensure user exists in Convex and get their profile
   const ensureConvexUser = useMutation(api.users.ensureUser);
-  const userProfile = useQuery(api.users.getMyUserProfile); // Fetches the full Convex user profile
+  const userProfile = useQuery(api.users.getMyUserProfile);
+  
+  // --- Add this mutation hook ---
+  const createSession = useMutation(api.sessions.createSession);
 
-  useEffect(() => {
-    if (clerkUserLoaded && isSignedIn) {
-      ensureConvexUser();
-    }
-  }, [clerkUserLoaded, isSignedIn, ensureConvexUser]);
-
+  // --- Add this handler function ---
   const handleStartSession = async () => {
     try {
       const sessionId = await createSession();
@@ -33,50 +28,67 @@ export default function DashboardPage() {
     }
   };
 
+  // Effect 1: Create the user record in Convex as soon as Clerk is ready.
   useEffect(() => {
-    if (clerkUserLoaded) {
-      if (!isSignedIn) {
-        router.push("/sign-in");
+    if (clerkLoaded && isSignedIn) {
+      ensureConvexUser({});
+    }
+  }, [clerkLoaded, isSignedIn, ensureConvexUser]);
+
+  // Effect 2: Handle redirection based on the result of the userProfile query.
+  useEffect(() => {
+    if (clerkLoaded && isSignedIn && userProfile !== undefined) {
+      if (userProfile === null) {
+        return;
+      }
+      if (!userProfile.onboardingCompleted) {
+        router.push("/onboarding/gks-questions");
       }
     }
-  }, [clerkUserLoaded, isSignedIn, router]);
+  }, [clerkLoaded, isSignedIn, userProfile, router]);
 
-  if (!clerkUserLoaded || !isSignedIn) {
+
+  const isLoading = !clerkLoaded || (isSignedIn && userProfile === undefined);
+
+  if (isLoading) {
+    return <div className="flex justify-center items-center min-h-screen text-lg">Loading...</div>;
+  }
+  
+  if (!isSignedIn) {
     return null;
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8 flex justify-between items-center">
-          <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
-          <UserButton afterSignOutUrl="/" />
-        </div>
+    <div className="flex flex-col items-center p-4 md:p-8">
+      <header className="w-full flex justify-between items-center mb-10 p-4 bg-gray-100 shadow-md rounded-lg">
+        <h1 className="text-2xl md:text-3xl font-semibold">
+          Welcome, {clerkUser?.firstName || userProfile?.email || 'User'}!
+        </h1>
+        <UserButton afterSignOutUrl="/" />
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
-        {/* Welcome Section */}
-        <div className="bg-white rounded-lg shadow p-6 mb-8">
-          <h2 className="text-xl font-semibold mb-2">Welcome, {clerkUser?.firstName || "User"}!</h2>
-          <p className="text-gray-600">
-            Here you can manage your therapy sessions and track your progress.
-          </p>
-        </div>
+      <div className="w-full max-w-4xl">
+        {/* ... other sections */}
 
-        {/* Start Session Card */}
-        <div className="bg-white rounded-lg shadow p-6 mb-8">
-          <h3 className="text-lg font-semibold mb-2">Start a New Session</h3>
+        <section className="mb-8 p-6 bg-white shadow rounded-lg">
+          <h2 className="text-xl font-semibold mb-3">Start a Session</h2>
           <p className="mb-4">Ready to talk? Begin your voice conversation with the AI therapist.</p>
+          {/* --- Add the onClick handler back to this button --- */}
           <button
             className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition duration-150"
             onClick={handleStartSession}
           >
             Start New Session
           </button>
-        </div>
-      </main>
+        </section>
+
+        {/* ... other sections */}
+      </div>
+
+      <footer className="mt-20 text-center text-sm text-gray-500">
+        <p>&copy; {new Date().getFullYear()} AI GKS Therapist. All rights reserved.</p>
+        <Link href="/" className="text-blue-500 hover:underline">Back to Landing Page</Link>
+      </footer>
     </div>
   );
 }
