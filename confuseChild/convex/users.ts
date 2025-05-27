@@ -1,7 +1,5 @@
-// anjalgoat/confusechild/confusechild-d50e6dfd94d03cf8af81dcc64bdfb6203a08d3de/confuseChild/convex/users.ts
 import { v } from "convex/values";
-import { internalMutation, mutation, query, internalQuery } from "./_generated/server"; // Added internalQuery
-import { GenericId } from "convex/values";
+import { internalMutation, mutation, query, internalQuery } from "./_generated/server";
 
 // Helper to get user by Clerk ID
 export const getUserByClerkId = query({
@@ -29,9 +27,7 @@ export const getUserForSession = internalQuery({
   },
 });
 
-// ... (rest of the file remains the same)
 // Mutation to create a user (called from Clerk webhook or first authenticated action)
-// Ensure onboardingCompleted is false by default
 export const createUser = internalMutation({
   args: {
     clerkUserId: v.string(),
@@ -43,8 +39,7 @@ export const createUser = internalMutation({
       clerkUserId: args.clerkUserId,
       email: args.email,
       name: args.name,
-      onboardingCompleted: false, // Default to false
-      // Initialize other fields as needed
+      onboardingCompleted: false,
     });
   },
 });
@@ -52,15 +47,12 @@ export const createUser = internalMutation({
 // Mutation to save onboarding responses
 export const saveOnboardingResponses = mutation({
   args: {
-    // Define arguments matching the structure of your onboardingResponses object
-    // This should mirror the 'onboardingResponses' field in your schema
     q1_perfectionism_pressure: v.optional(v.string()),
     q2_fear_of_failure_feeling: v.optional(v.string()),
     q3_imposter_syndrome_doubt: v.optional(v.string()),
     q4_procrastination_pressure: v.optional(v.string()),
     q5_sense_of_alienation: v.optional(v.string()),
     q6_career_dissatisfaction: v.optional(v.string()),
-    // Add other questions as needed
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -77,7 +69,7 @@ export const saveOnboardingResponses = mutation({
       throw new Error("User not found in Convex database.");
     }
 
-    const responses = { ...args }; // Collect all args into the responses object
+    const responses = { ...args };
 
     await ctx.db.patch(user._id, {
       onboardingResponses: responses,
@@ -88,52 +80,43 @@ export const saveOnboardingResponses = mutation({
   },
 });
 
-// You might also want a function to ensure user exists, called by authenticated components
+// Ensures a user document exists for the currently logged-in user.
 export const ensureUser = mutation({
-  args: {}, // No args needed, gets user from identity
+  args: {},
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
       throw new Error("Called ensureUser without authentication present");
     }
 
-    // Check if user already exists
     const user = await ctx.db
       .query("users")
       .withIndex("by_clerkUserId", (q) => q.eq("clerkUserId", identity.subject))
       .unique();
 
     if (user !== null) {
-      // Optionally update user fields if they've changed in Clerk (e.g., email, name)
-      // For now, just return the existing user ID
       if (user.email !== identity.email) {
          await ctx.db.patch(user._id, { email: identity.email! });
       }
       return user._id;
     }
 
-    // If user doesn't exist, create them
-    // Note: `onboardingCompleted` will be false by default from the `createUser` logic
-    // if we were to call an internal mutation like `internal.users.createUser`.
-    // Here we insert directly.
     const userId = await ctx.db.insert("users", {
       clerkUserId: identity.subject,
       email: identity.email!,
       name: identity.name,
-      onboardingCompleted: false, // Explicitly set to false
-      // initialize other fields
+      onboardingCompleted: false,
     });
     return userId;
   },
 });
 
-// Get user profile including onboarding status (client-callable)
+// Get the current user's profile
 export const getMyUserProfile = query({
   args: {},
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
-      // This case should ideally be handled by client-side auth checks first
       return null;
     }
     const user = await ctx.db
@@ -142,4 +125,22 @@ export const getMyUserProfile = query({
       .unique();
     return user;
   },
+});
+
+// Internal mutation to update the user profile with analysis
+export const updateUserProfileInsights = internalMutation({
+    args: {
+        userId: v.id("users"),
+        longTermProfileSummary: v.string(),
+        keyInsights: v.array(v.object({
+            belief: v.string(),
+            trigger: v.string(),
+        })),
+    },
+    handler: async (ctx, args) => {
+        await ctx.db.patch(args.userId, {
+            longTermProfileSummary: args.longTermProfileSummary,
+            keyInsights: args.keyInsights,
+        });
+    },
 });
