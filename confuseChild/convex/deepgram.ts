@@ -1,3 +1,5 @@
+// anjalgoat/confusechild/confusechild-4e02ccc8575e0002f8456ba867037f8f963ef573/confuseChild/convex/deepgram.ts
+
 "use use node"; // Required for using the Deepgram SDK in Convex
 import { action } from "./_generated/server";
 import { createClient } from "@deepgram/sdk";
@@ -23,7 +25,8 @@ export const createToken = action({
       deepgramProjectId,
       {
         comment: "Temporary key for AI Therapist session",
-        scopes: ["usage:write"], // Scope for client-side streaming
+        // --- FIX: Change the scope to "member" to allow conversational AI ---
+        scopes: ["member"], 
         timeToLiveInSeconds: 60 * 10, // Key is valid for 10 minutes
       }
     );
