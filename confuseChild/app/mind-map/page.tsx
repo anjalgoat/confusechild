@@ -4,10 +4,11 @@ import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, BrainCircuit } from "lucide-react";
 import ReactFlow, { MiniMap, Controls, Background, Node, Edge, Position } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { useMemo, useEffect, useState } from "react";
+import { useMemo, useEffect, useState, useCallback } from "react";
 import dagre from 'dagre';
 
 import MindMapNode from '@/components/ui/MindMapNode';
@@ -16,29 +17,14 @@ import MindMapNode from '@/components/ui/MindMapNode';
 const dagreGraph = new dagre.graphlib.Graph();
 dagreGraph.setDefaultEdgeLabel(() => ({}));
 
-// Node dimensions (can be adjusted)
-const nodeWidths = {
-    root: 200,
-    summary: 350,
-    insight: 250,
-};
-const nodeHeights = {
-    root: 70,
-    summary: 200, // Adjusted for potentially longer summaries
-    insight: 100,
-};
+const nodeWidth = 250;
+const nodeHeight = 70;
 
-const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'TB') => { // Changed direction to 'TB'
-  dagreGraph.setGraph({ 
-    rankdir: direction,
-    ranksep: 70,  // Distance between ranks (vertical levels)
-    nodesep: 30,  // Distance between nodes in the same rank (horizontal)
-  });
+const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'LR') => {
+  dagreGraph.setGraph({ rankdir: direction, ranksep: 80, nodesep: 20 });
 
   nodes.forEach((node) => {
-    const width = nodeWidths[node.data.type as keyof typeof nodeWidths] || nodeWidths.insight;
-    const height = nodeHeights[node.data.type as keyof typeof nodeHeights] || nodeHeights.insight;
-    dagreGraph.setNode(node.id, { width, height });
+    dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight });
   });
 
   edges.forEach((edge) => {
@@ -49,12 +35,11 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'TB') => 
 
   nodes.forEach((node) => {
     const nodeWithPosition = dagreGraph.node(node.id);
-    // For TB layout, target is Top, source is Bottom
-    node.targetPosition = Position.Top;
-    node.sourcePosition = Position.Bottom;
+    node.targetPosition = Position.Left;
+    node.sourcePosition = Position.Right;
     node.position = {
-      x: nodeWithPosition.x - (nodeWidths[node.data.type as keyof typeof nodeWidths] || nodeWidths.insight) / 2,
-      y: nodeWithPosition.y - (nodeHeights[node.data.type as keyof typeof nodeHeights] || nodeHeights.insight) / 2,
+      x: nodeWithPosition.x - nodeWidth / 2,
+      y: nodeWithPosition.y - nodeHeight / 2,
     };
   });
 
@@ -62,92 +47,88 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'TB') => 
 };
 // --- End of layouting logic ---
 
-
 export default function MindMapPage() {
     const userProfile = useQuery(api.users.getMyUserProfile);
-    const [layoutedNodes, setLayoutedNodes] = useState<Node[]>([]);
-    const [layoutedEdges, setLayoutedEdges] = useState<Edge[]>([]);
+    const [nodes, setNodes] = useState<Node[]>([]);
+    const [edges, setEdges] = useState<Edge[]>([]);
+    const [expandedNodes, setExpandedNodes] = useState(new Set(['root']));
 
     const nodeTypes = useMemo(() => ({ mindMapNode: MindMapNode }), []);
+    
+    const toggleNode = useCallback((nodeId: string) => {
+        setExpandedNodes(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(nodeId)) {
+                newSet.delete(nodeId);
+            } else {
+                newSet.add(nodeId);
+            }
+            return newSet;
+        });
+    }, []);
 
     useEffect(() => {
-        if (userProfile) {
-            const initialNodes: Node[] = [];
-            const initialEdges: Edge[] = [];
-            let lastSummaryNodeId = 'root'; // Start connecting from the root
-            
+        if (userProfile && userProfile.keyInsights) {
+            const newNodes: Node[] = [];
+            const newEdges: Edge[] = [];
+
             // Root Node
-            initialNodes.push({
+            newNodes.push({
                 id: 'root',
                 type: 'mindMapNode',
-                data: { label: 'Your Cognitive Mind', type: 'root' },
+                data: { 
+                    label: 'Your Key Insights', 
+                    type: 'root',
+                    hasChildren: true,
+                    isExpanded: expandedNodes.has('root'),
+                    onToggle: () => toggleNode('root'),
+                },
                 position: {x: 0, y: 0}
             });
-            
-            // Summary Node
-            if (userProfile.longTermProfileSummary) {
-                initialNodes.push({
-                    id: 'summary',
-                    type: 'mindMapNode',
-                    data: { label: `Summary: ${userProfile.longTermProfileSummary}`, type: 'summary' },
-                    position: {x: 0, y: 0}
-                });
-                initialEdges.push({ id: 'e-root-summary', source: 'root', target: 'summary' });
-                lastSummaryNodeId = 'summary'; // Insights will branch from the summary
-            }
 
-            // Insights Nodes
-            if (userProfile.keyInsights && userProfile.keyInsights.length > 0) {
-                 // Optional: Create an "Insights Hub" if you want to group them
-                // initialNodes.push({
-                //     id: 'insights-hub',
-                //     type: 'mindMapNode',
-                //     data: { label: 'Key Insights', type: 'root' }, // Use a different type if needed
-                //     position: {x:0, y:0}
-                // });
-                // initialEdges.push({id: 'e-summary-insights-hub', source: lastSummaryNodeId, target: 'insights-hub'});
-                // const insightsParentNodeId = 'insights-hub';
-
-                // Connect insights directly to summary (or root if no summary)
-                const insightsParentNodeId = lastSummaryNodeId; 
-
+            if (expandedNodes.has('root')) {
                 userProfile.keyInsights.forEach((insight, index) => {
                     const beliefId = `belief-${index}`;
                     const triggerId = `trigger-${index}`;
-                    
-                    initialNodes.push({
+                    const isBeliefExpanded = expandedNodes.has(beliefId);
+
+                    // Belief Node
+                    newNodes.push({
                         id: beliefId,
                         type: 'mindMapNode',
-                        data: { label: `Belief: "${insight.belief}"`, type: 'insight' },
-                        position: {x: 0, y: 0}
+                        data: {
+                            label: `Belief: "${insight.belief}"`,
+                            type: 'belief',
+                            hasChildren: true,
+                            isExpanded: isBeliefExpanded,
+                            onToggle: () => toggleNode(beliefId)
+                        },
+                        position: { x: 0, y: 0 }
                     });
-                    // Connect belief to the parent (summary or insights-hub)
-                    initialEdges.push({ id: `e-${insightsParentNodeId}-${beliefId}`, source: insightsParentNodeId, target: beliefId });
+                    newEdges.push({ id: `e-root-${beliefId}`, source: 'root', target: beliefId });
 
-                    initialNodes.push({
-                        id: triggerId,
-                        type: 'mindMapNode',
-                        data: { label: `Trigger: ${insight.trigger}`, type: 'insight' },
-                        position: {x: 0, y: 0}
-                    });
-                    // Connect trigger to its belief
-                    initialEdges.push({ id: `e-belief-${triggerId}`, source: beliefId, target: triggerId });
+                    // Trigger Node (if belief is expanded)
+                    if (isBeliefExpanded) {
+                        newNodes.push({
+                            id: triggerId,
+                            type: 'mindMapNode',
+                            data: {
+                                label: `Trigger: ${insight.trigger}`,
+                                type: 'trigger',
+                                hasChildren: false,
+                            },
+                            position: { x: 0, y: 0 }
+                        });
+                        newEdges.push({ id: `e-belief-${triggerId}`, source: beliefId, target: triggerId });
+                    }
                 });
             }
 
-            if(initialNodes.length > 1) {
-              const { nodes: finalNodes, edges: finalEdges } = getLayoutedElements(initialNodes, initialEdges);
-              setLayoutedNodes(finalNodes);
-              setLayoutedEdges(finalEdges);
-            } else if (initialNodes.length === 1) { // Only root node
-              setLayoutedNodes(initialNodes); 
-              setLayoutedEdges(initialEdges);
-            } else { // No data at all
-              setLayoutedNodes([]);
-              setLayoutedEdges([]);
-            }
+            const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(newNodes, newEdges);
+            setNodes(layoutedNodes);
+            setEdges(layoutedEdges);
         }
-    }, [userProfile]);
+    }, [userProfile, expandedNodes, toggleNode]);
 
     if (userProfile === undefined) {
         return (
@@ -158,7 +139,6 @@ export default function MindMapPage() {
         );
     }
     
-    // Check if there's more than just the root node to display a meaningful map
     if (!userProfile || (!userProfile.longTermProfileSummary && (!userProfile.keyInsights || userProfile.keyInsights.length === 0))) {
         return (
              <div className="flex flex-col items-center justify-center min-h-screen text-center p-4">
@@ -176,32 +156,47 @@ export default function MindMapPage() {
     }
 
     return (
-        <div className="w-screen h-screen">
-             <header className="absolute top-4 left-4 z-10 flex items-center gap-4">
-                <Button asChild variant="outline" className="bg-white shadow-lg">
+        <div className="flex flex-col w-screen h-screen bg-gray-100 dark:bg-gray-900">
+             <header className="absolute top-4 left-4 z-10">
+                <Button asChild variant="outline" className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-md shadow-lg hover:bg-white dark:hover:bg-slate-800">
                     <Link href="/dashboard">
                         <ArrowLeft className="mr-2 h-4 w-4" />
                         Dashboard
                     </Link>
                 </Button>
             </header>
-            <ReactFlow
-                nodes={layoutedNodes}
-                edges={layoutedEdges}
-                nodeTypes={nodeTypes}
-                fitView
-                className="bg-gray-100"
-                defaultEdgeOptions={{
-                    type: 'smoothstep',
-                    animated: false,
-                    style: { stroke: '#4b5563', strokeWidth: 1.5 }, // Darker stroke for better visibility
-                    markerEnd: { type: 'arrowclosed', color: '#4b5563' },
-                }}
-            >
-                <Controls />
-                <MiniMap nodeStrokeWidth={3} zoomable pannable />
-                <Background variant="dots" gap={16} size={1} />
-            </ReactFlow>
+            
+            <div className="p-4 sm:p-6">
+                <Card className="max-w-4xl mx-auto shadow-lg border-gray-200/80 bg-white/80 dark:border-gray-700/80 dark:bg-slate-800/80 backdrop-blur-sm">
+                    <CardHeader>
+                        <CardTitle className="text-xl font-semibold text-gray-800 dark:text-gray-100">Cognitive Profile Summary</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <p className="text-base text-gray-700 dark:text-gray-300">
+                            {userProfile.longTermProfileSummary}
+                        </p>
+                    </CardContent>
+                </Card>
+            </div>
+            
+            <div className="flex-grow w-full h-full">
+                <ReactFlow
+                    nodes={nodes}
+                    edges={edges}
+                    nodeTypes={nodeTypes}
+                    fitView
+                    defaultEdgeOptions={{
+                        type: 'smoothstep',
+                        animated: false,
+                        style: { stroke: '#6b7280', strokeWidth: 1.5 },
+                        markerEnd: { type: 'arrowclosed', color: '#6b7280' },
+                    }}
+                >
+                    <Controls />
+                    <MiniMap nodeStrokeWidth={3} zoomable pannable />
+                    <Background variant="dots" gap={16} size={1} />
+                </ReactFlow>
+            </div>
         </div>
     );
 }
