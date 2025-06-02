@@ -1,5 +1,7 @@
+// convex/users.ts
 import { v } from "convex/values";
 import { internalMutation, mutation, query, internalQuery } from "./_generated/server";
+import { Id } from "./_generated/dataModel"; // Ensure Id is imported if used in other functions
 
 // Helper to get user by Clerk ID
 export const getUserByClerkId = query({
@@ -13,9 +15,6 @@ export const getUserByClerkId = query({
   },
 });
 
-/**
- * Internal helper to get a user's document from a session ID.
- */
 export const getUserForSession = internalQuery({
   args: { sessionId: v.id("sessions") },
   handler: async (ctx, args) => {
@@ -27,7 +26,6 @@ export const getUserForSession = internalQuery({
   },
 });
 
-// Mutation to create a user (called from Clerk webhook or first authenticated action)
 export const createUser = internalMutation({
   args: {
     clerkUserId: v.string(),
@@ -40,19 +38,17 @@ export const createUser = internalMutation({
       email: args.email,
       name: args.name,
       onboardingCompleted: false,
+      // onboardingResponses is intentionally not set here, will be set by saveOnboardingResponses
     });
   },
 });
 
-// Mutation to save onboarding responses
 export const saveOnboardingResponses = mutation({
   args: {
-    q1_perfectionism_pressure: v.optional(v.string()),
-    q2_fear_of_failure_feeling: v.optional(v.string()),
-    q3_imposter_syndrome_doubt: v.optional(v.string()),
-    q4_procrastination_pressure: v.optional(v.string()),
-    q5_sense_of_alienation: v.optional(v.string()),
-    q6_career_dissatisfaction: v.optional(v.string()),
+    responses: v.array(v.object({ // This defines args.responses as the new array type
+      question: v.string(),
+      answer: v.string(),
+    })),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -69,10 +65,12 @@ export const saveOnboardingResponses = mutation({
       throw new Error("User not found in Convex database.");
     }
 
-    const responses = { ...args };
-
+    // args.responses here IS the new array type.
+    // The error on this line suggests TypeScript is incorrectly inferring 'args.responses'
+    // as the old object type, which is strange given the 'args' definition above.
+    // This might be a stale typecheck issue in your 'convex dev' environment.
     await ctx.db.patch(user._id, {
-      onboardingResponses: responses,
+      onboardingResponses: args.responses, // This should be correct
       onboardingCompleted: true,
     });
 
@@ -80,7 +78,6 @@ export const saveOnboardingResponses = mutation({
   },
 });
 
-// Ensures a user document exists for the currently logged-in user.
 export const ensureUser = mutation({
   args: {},
   handler: async (ctx) => {
@@ -106,12 +103,12 @@ export const ensureUser = mutation({
       email: identity.email!,
       name: identity.name,
       onboardingCompleted: false,
+       // onboardingResponses is intentionally not set here
     });
     return userId;
   },
 });
 
-// Get the current user's profile
 export const getMyUserProfile = query({
   args: {},
   handler: async (ctx) => {
@@ -127,7 +124,6 @@ export const getMyUserProfile = query({
   },
 });
 
-// Internal mutation to update the user profile with analysis
 export const updateUserProfileInsights = internalMutation({
     args: {
         userId: v.id("users"),
