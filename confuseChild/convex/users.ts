@@ -51,6 +51,8 @@ export const saveOnboardingResponses = mutation({
     })),
   },
   handler: async (ctx, args) => {
+    // Log the exact arguments received from the frontend.
+    console.log("[BACKEND LOG] Arguments received in mutation:", JSON.stringify(args, null, 2));
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
       throw new Error("User not authenticated");
@@ -65,10 +67,6 @@ export const saveOnboardingResponses = mutation({
       throw new Error("User not found in Convex database.");
     }
 
-    // args.responses here IS the new array type.
-    // The error on this line suggests TypeScript is incorrectly inferring 'args.responses'
-    // as the old object type, which is strange given the 'args' definition above.
-    // This might be a stale typecheck issue in your 'convex dev' environment.
     await ctx.db.patch(user._id, {
       onboardingResponses: args.responses, // This should be correct
       onboardingCompleted: true,

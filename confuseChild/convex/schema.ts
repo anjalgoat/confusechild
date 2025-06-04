@@ -1,8 +1,18 @@
-// convex/schema.ts
+// In convex/schema.ts
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  // Add this new table definition
+  gks_knowledge: defineTable({
+    chunk: v.string(), // This will store the text chunk from your document
+    embedding: v.array(v.float64()), // This will store the vector embedding of the chunk
+  }).vectorIndex("by_embedding", { // This creates the index for vector search
+    vectorField: "embedding",
+    dimensions: 1536, // This is for OpenAI's 'text-embedding-ada-002' model.
+  }),
+
+  // ... keep all your other existing tables (knowledge, users, sessions, etc.)
   knowledge: defineTable({
     description: v.string(),
     storageId: v.id("_storage"),

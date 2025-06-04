@@ -4,7 +4,7 @@ import { useState, FormEvent, useEffect } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useRouter } from "next/navigation";
-import { useUser } from "@clerk/nextjs"; // To ensure user is loaded
+import { useUser } from "@clerk/nextjs";
 
 // Define a type for your form data for better type safety
 interface OnboardingFormData {
@@ -14,7 +14,6 @@ interface OnboardingFormData {
   q4_procrastination_pressure: string;
   q5_sense_of_alienation: string;
   q6_career_dissatisfaction: string;
-  // Add other question keys here
 }
 
 const initialFormData: OnboardingFormData = {
@@ -24,7 +23,6 @@ const initialFormData: OnboardingFormData = {
   q4_procrastination_pressure: "",
   q5_sense_of_alienation: "",
   q6_career_dissatisfaction: "",
-  // Initialize other questions
 };
 
 export default function GKSOnboardingPage() {
@@ -35,16 +33,15 @@ export default function GKSOnboardingPage() {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-  const userProfile = useQuery(api.users.getMyUserProfile); // Get Convex user profile
+  const userProfile = useQuery(api.users.getMyUserProfile);
 
   useEffect(() => {
     if (clerkUserLoaded && !isSignedIn) {
-      router.push("/sign-in"); // Redirect if not signed in
+      router.push("/sign-in");
     }
   }, [isSignedIn, clerkUserLoaded, router]);
 
   useEffect(() => {
-    // If user profile is loaded and onboarding is already complete, redirect to dashboard
     if (userProfile && userProfile.onboardingCompleted) {
       router.push("/dashboard");
     }
@@ -63,7 +60,6 @@ export default function GKSOnboardingPage() {
     setIsLoading(true);
     setError(null);
 
-    // Basic validation (optional, add more as needed)
     const allFieldsFilled = Object.values(formData).every(val => val.trim() !== "");
     if (!allFieldsFilled) {
       setError("Please answer all questions.");
@@ -72,12 +68,21 @@ export default function GKSOnboardingPage() {
     }
 
     try {
-      // The mutation expects individual args, not a single object
-      // So we spread formData into the mutation call
+      // **THE FIX: This section transforms the form's flat object into an array.**
+      const responsesArray = Object.entries(formData).map(([question, answer]) => ({
+        question,
+        answer,
+      }));
+
+      // Log the exact object we are about to send to the backend.
+      console.log("[FRONTEND LOG] Payload sent to saveOnboardingResponses:", { responses: responsesArray })
+
+      // **THE FIX: This section calls the mutation with the correctly formatted object.**
       await saveResponses({
-        ...formData
+        responses: responsesArray
       });
-      router.push("/dashboard"); // Redirect to dashboard after successful submission
+
+      router.push("/dashboard");
     } catch (err) {
       console.error("Failed to save onboarding responses:", err);
       setError(err instanceof Error ? err.message : "An unknown error occurred.");
@@ -90,7 +95,6 @@ export default function GKSOnboardingPage() {
     return <div className="flex justify-center items-center min-h-screen">Loading onboarding...</div>;
   }
    if (userProfile && userProfile.onboardingCompleted) {
-    // This case should be handled by the useEffect redirect, but as a safeguard:
     return <div className="flex justify-center items-center min-h-screen">Loading...</div>;
   }
 
@@ -109,17 +113,15 @@ export default function GKSOnboardingPage() {
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-2xl">
         <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
           <form onSubmit={handleSubmit} className="space-y-8">
-            {/* Replace these with your actual questions and input types */}
-            {/* Question 1 */}
             <div>
-              <label htmlFor="q1" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="q1_perfectionism_pressure" className="block text-sm font-medium text-gray-700">
                 1. Do you often feel an intense pressure to be perfect in everything you do? (e.g., Scale 1-5, or short text)
               </label>
               <div className="mt-1">
                 <input
                   id="q1_perfectionism_pressure"
                   name="q1_perfectionism_pressure"
-                  type="text" // Or select, textarea
+                  type="text"
                   required
                   value={formData.q1_perfectionism_pressure}
                   onChange={handleChange}
@@ -128,7 +130,6 @@ export default function GKSOnboardingPage() {
               </div>
             </div>
 
-            {/* Question 2 */}
             <div>
               <label htmlFor="q2_fear_of_failure_feeling" className="block text-sm font-medium text-gray-700">
                 2. How does the thought of not meeting high expectations make you feel?
@@ -146,29 +147,24 @@ export default function GKSOnboardingPage() {
               </div>
             </div>
             
-            {/* Add more questions similarly, matching names to OnboardingFormData and Convex mutation args */}
-            {/* Q3 */}
              <div>
               <label htmlFor="q3_imposter_syndrome_doubt" className="block text-sm font-medium text-gray-700">
                 3. Do you sometimes doubt your abilities, feeling like you might be 'found out'?
               </label>
               <textarea id="q3_imposter_syndrome_doubt" name="q3_imposter_syndrome_doubt" value={formData.q3_imposter_syndrome_doubt} onChange={handleChange} rows={3} required className="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"/>
             </div>
-            {/* Q4 */}
             <div>
               <label htmlFor="q4_procrastination_pressure" className="block text-sm font-medium text-gray-700">
                 4. Do you find yourself delaying tasks, especially if they feel overwhelming or you're worried about the outcome?
               </label>
               <textarea id="q4_procrastination_pressure" name="q4_procrastination_pressure" value={formData.q4_procrastination_pressure} onChange={handleChange} rows={3} required className="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"/>
             </div>
-            {/* Q5 */}
             <div>
               <label htmlFor="q5_sense_of_alienation" className="block text-sm font-medium text-gray-700">
                 5. Have you ever felt different from your peers or had trouble connecting with them due to your intellectual interests or intensity?
               </label>
               <textarea id="q5_sense_of_alienation" name="q5_sense_of_alienation" value={formData.q5_sense_of_alienation} onChange={handleChange} rows={3} required className="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"/>
             </div>
-            {/* Q6 */}
             <div>
               <label htmlFor="q6_career_dissatisfaction" className="block text-sm font-medium text-gray-700">
                6. Despite achievements, do you feel a persistent sense of unfulfillment or that you're not living up to your 'potential'?

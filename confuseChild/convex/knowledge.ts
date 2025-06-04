@@ -1,7 +1,8 @@
 // convex/knowledge.ts
 import { v } from "convex/values";
-import { internalQuery, mutation, QueryCtx } from "./_generated/server"; // Added QueryCtx for explicit typing
-import { Id, Doc } from "./_generated/dataModel"; // Added Doc and Id for explicit typing
+import { internalAction, internalQuery, mutation, ActionCtx, QueryCtx } from "./_generated/server";
+import { internal } from "./_generated/api"; // Import 'internal' for server-side calls
+import { Id, Doc } from "./_generated/dataModel";
 
 export const addCoreMethodologyFile = mutation({
   args: {
@@ -28,23 +29,32 @@ export const addCoreMethodologyFile = mutation({
   },
 });
 
-export const getCoreMethodology = internalQuery({
-  handler: async (ctx: QueryCtx): Promise<string | null> => { // Explicitly type ctx
-    const doc: Doc<"knowledge"> | null = await ctx.db
+// Helper query to get the document metadata
+export const getCoreMethodologyDoc = internalQuery({
+  handler: async (ctx: QueryCtx): Promise<Doc<"knowledge"> | null> => {
+    return await ctx.db
       .query("knowledge")
       .withIndex("by_type", q => q.eq("type", "core_methodology"))
       .first();
+  }
+});
+
+// Action to get the file content
+export const getCoreMethodology = internalAction({
+  handler: async (ctx: ActionCtx): Promise<string | null> => {
+    // FIX 1: Call the internal query using the 'internal' object, not 'api.internal'
+    const doc = await ctx.runQuery(internal.knowledge.getCoreMethodologyDoc);
     
     if (!doc) {
         return null;
     }
 
-    // The ctx.storage.get method should exist on StorageReader, which is part of QueryCtx.
-    // If this still errors, it might be an issue with your Convex version or generated types.
-    const content: ArrayBuffer | null = await ctx.storage.get(doc.storageId);
-    if (!content) {
+    // FIX 2: Handle the Blob return type and convert it to an ArrayBuffer
+    const blob: Blob | null = await ctx.storage.get(doc.storageId);
+    if (blob === null) {
         return null;
     }
+    const content = await blob.arrayBuffer();
 
     return new TextDecoder().decode(content);
   }

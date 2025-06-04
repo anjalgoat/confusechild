@@ -36,20 +36,14 @@ export const chat = action({
         const user = await ctx.runQuery(internal.users.getUserForSession, { sessionId: args.sessionId });
         if (!user) throw new Error("User not found");
 
-        // Note: If 'internal.chat.addTranscriptChunk' errors, ensure 'addTranscriptChunk' is correctly
-        // exported as an internalMutation from this file and 'npx convex dev' has run successfully.
         await ctx.runMutation(internal.chat.addTranscriptChunk, { sessionId: args.sessionId, userId: user._id, role: "user", content: userTranscript });
         
-        // Note: If 'api.chat.getRecentTranscriptChunks' errors, ensure 'getRecentTranscriptChunks' is correctly
-        // exported as a query from this file and 'npx convex dev' has run successfully.
         const history = await ctx.runQuery(api.chat.getRecentTranscriptChunks, { sessionId: args.sessionId });
         
-        // Error TS2339 for internal.planner.getEntriesForUser:
-        // This suggests 'getEntriesForUser' is not correctly appearing in the 'internal.planner' API map.
-        // Ensure 'getEntriesForUser' is exported as 'export const getEntriesForUser = internalQuery({...});'
-        // from 'convex/planner.ts' and that 'npx convex dev' has completed without errors.
         const plannerEntries = await ctx.runQuery(internal.planner.getEntriesForUser, { userId: user._id });
-        const methodologyContent = await ctx.runQuery(internal.knowledge.getCoreMethodology);
+        
+        // **FIXED LINE**
+        const methodologyContent = await ctx.runAction(internal.knowledge.getCoreMethodology);
 
         if (!methodologyContent) {
             throw new Error("Core methodology document not found. Please upload and register it via the addCoreMethodologyFile mutation.");
@@ -101,7 +95,6 @@ export const chat = action({
         const chatResponse = await openrouter.chat.completions.create({ model: "openai/gpt-4o", messages });
         const assistantResponse = chatResponse.choices[0].message?.content ?? "I'm not sure what to say.";
         
-        // Note: If 'internal.chat.addTranscriptChunk' errors, see comment above.
         await ctx.runMutation(internal.chat.addTranscriptChunk, { sessionId: args.sessionId, userId: user._id, role: "assistant", content: assistantResponse });
 
         const ttsResponse = await fetch("https://api.deepgram.com/v1/speak?model=aura-asteria-en", {

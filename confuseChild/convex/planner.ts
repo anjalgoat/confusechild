@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query, internalQuery } from "./_generated/server";
 import { Doc, Id } from "./_generated/dataModel";
 
 /**
@@ -84,5 +84,23 @@ export const updatePlannerEntryStatus = mutation({
         await ctx.db.patch(args.plannerEntryId, {
             status: args.status,
         });
+    },
+});
+
+/**
+ * Internal query to get all planner entries for a specific user.
+ * This can be called from other backend functions (actions or mutations).
+ */
+export const getEntriesForUser = internalQuery({
+    args: {
+        userId: v.id("users"),
+    },
+    handler: async (ctx, args): Promise<Doc<"plannerEntries">[]> => {
+        // Fetch planner entries for the given user, newest first
+        return await ctx.db
+            .query("plannerEntries")
+            .withIndex("by_userId_createdAt", (q) => q.eq("userId", args.userId))
+            .order("desc")
+            .collect();
     },
 });
