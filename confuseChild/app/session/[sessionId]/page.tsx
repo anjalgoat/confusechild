@@ -1,12 +1,14 @@
+// anjalgoat/confusechild/confusechild-e9e1b832bc5441a55057504fc71adb24323b46ff/confuseChild/app/session/[sessionId]/page.tsx
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, FormEvent } from "react";
 import { useMutation, useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Id } from "@/convex/_generated/dataModel";
-import { LogOut, Mic, Square } from "lucide-react";
+import { LogOut, Mic, Square, Send } from "lucide-react";
 
 type TranscriptMessage = {
   role: "user" | "assistant";
@@ -23,6 +25,8 @@ export default function SessionPage() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isEnding, setIsEnding] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptMessage[]>([]);
+  const [textInput, setTextInput] = useState("");
+  const [isSending, setIsSending] = useState(false);
 
   // Refs for audio recording
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -31,6 +35,7 @@ export default function SessionPage() {
   // Convex hooks
   const generateUploadUrl = useMutation(api.chat.generateUploadUrl);
   const chatWithAI = useAction(api.chat.chat);
+  const chatWithText = useAction(api.chat.chatWithText);
   const startConversationAction = useAction(api.chat.startConversation);
   const endSessionAction = useAction(api.chat.endSession);
   const historicTranscript = useQuery(api.chat.getRecentTranscriptChunks, {
@@ -52,7 +57,6 @@ export default function SessionPage() {
 
   // Effect to play initial greeting
   useEffect(() => {
-    // Check if historicTranscript is loaded and if it's empty
     if (historicTranscript && historicTranscript.length === 0) {
       setIsPlaying(true);
       startConversationAction({ sessionId: validSessionId })
@@ -60,7 +64,7 @@ export default function SessionPage() {
           setTranscript([
             {
               role: "assistant",
-              content: "Welcome back. What's been on your mind lately?",
+              content: "Welcome. To start, could you tell me a bit about what makes you feel you're labeled as 'gifted'?",
             },
           ]);
           const audioBlob = new Blob([audioArrayBuffer], { type: "audio/mpeg" });
@@ -75,8 +79,6 @@ export default function SessionPage() {
         });
     }
   }, [historicTranscript, startConversationAction, validSessionId]);
-
-  // --- Recording and AI Interaction Logic ---
 
   const handleStartRecording = async () => {
     setIsRecording(true);
@@ -142,10 +144,49 @@ export default function SessionPage() {
       };
     }
   };
+  
+  const handleSendTextMessage = async (e: FormEvent) => {
+    e.preventDefault();
+    if (textInput.trim() === "" || isPlaying || isRecording || isSending) return;
+
+    const messageToSend = textInput;
+    setTextInput("");
+    setIsSending(true);
+    
+    setTranscript((prev) => [...prev, { role: "user", content: messageToSend }]);
+
+    try {
+      const result = await chatWithText({
+        userText: messageToSend,
+        sessionId: validSessionId,
+      });
+
+      setTranscript((prev) => [
+        ...prev,
+        { role: "assistant", content: result.assistantResponse },
+      ]);
+      
+      setIsPlaying(true);
+      const audioPlayer = new Audio(URL.createObjectURL(
+        new Blob([result.audio], { type: "audio/mpeg" })
+      ));
+      audioPlayer.play();
+      audioPlayer.onended = () => {
+        setIsPlaying(false);
+      };
+
+    } catch (error) {
+      console.error("Error in text chat flow:", error);
+      alert("There was an error sending your message. Please try again.");
+      setTranscript(prev => prev.slice(0, -1)); 
+    } finally {
+      setIsSending(false);
+    }
+  };
+
 
   const handleEndSession = async () => {
     setIsEnding(true);
-    // Stop recording if it's active before ending the session
     if (isRecording) {
       handleStopRecording();
     }
@@ -169,14 +210,14 @@ export default function SessionPage() {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900 p-4">
+    <div className="flex flex-col items-center justify-between min-h-screen bg-gray-100 dark:bg-gray-900 p-4">
       <div className="w-full max-w-2xl relative">
         <Button
           variant="outline"
           size="icon"
           className="absolute top-4 right-4 z-10"
           onClick={handleEndSession}
-          disabled={isRecording || isPlaying}
+          disabled={isRecording || isPlaying || isSending}
           title="End Session"
         >
           <LogOut className="h-4 w-4" />
@@ -196,7 +237,7 @@ export default function SessionPage() {
                 </p>
               </div>
             ))}
-            {isPlaying && !isRecording && (
+            {(isPlaying || isSending) && !isRecording && (
               <div className="flex justify-start">
                 <div className="p-3 rounded-lg bg-gray-200 dark:bg-gray-600">
                   <div className="animate-pulse flex space-x-2">
@@ -211,26 +252,41 @@ export default function SessionPage() {
         </div>
       </div>
 
-      {/* --- NEW START/STOP BUTTONS --- */}
-      <div className="mt-8">
-        {!isRecording ? (
-          <Button
-            onClick={handleStartRecording}
-            disabled={isPlaying}
-            className="px-8 py-6 rounded-full text-lg font-semibold transition-all duration-200 bg-green-600 hover:bg-green-700 disabled:opacity-50"
-          >
-            <Mic className="mr-2 h-6 w-6" />
-            Start Recording
+      <div className="mt-8 w-full max-w-2xl">
+        <div className="flex justify-center mb-4">
+          {!isRecording ? (
+            <Button
+              onClick={handleStartRecording}
+              disabled={isPlaying || isSending}
+              className="px-8 py-6 rounded-full text-lg font-semibold transition-all duration-200 bg-green-600 hover:bg-green-700 disabled:opacity-50"
+            >
+              <Mic className="mr-2 h-6 w-6" />
+              Speak
+            </Button>
+          ) : (
+            <Button
+              onClick={handleStopRecording}
+              className="px-8 py-6 rounded-full text-lg font-semibold transition-all duration-200 bg-red-600 hover:bg-red-700 animate-pulse"
+            >
+              <Square className="mr-2 h-6 w-6" />
+              Stop
+            </Button>
+          )}
+        </div>
+        
+        <form onSubmit={handleSendTextMessage} className="flex items-center gap-2">
+          <Input
+            type="text"
+            placeholder="Or type your message here..."
+            value={textInput}
+            onChange={(e) => setTextInput(e.target.value)}
+            disabled={isRecording || isPlaying || isSending}
+            className="flex-grow"
+          />
+          <Button type="submit" size="icon" disabled={isRecording || isPlaying || isSending || textInput.trim() === ""}>
+            <Send className="h-5 w-5" />
           </Button>
-        ) : (
-          <Button
-            onClick={handleStopRecording}
-            className="px-8 py-6 rounded-full text-lg font-semibold transition-all duration-200 bg-red-600 hover:bg-red-700 animate-pulse"
-          >
-            <Square className="mr-2 h-6 w-6" />
-            Stop Recording
-          </Button>
-        )}
+        </form>
       </div>
     </div>
   );
